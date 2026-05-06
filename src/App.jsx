@@ -1,24 +1,29 @@
 import { useState, useEffect } from 'react'
+import MapView from './MapView'
 
 function App() {
-  const [status, setStatus] = useState('Loading...')
+  const [systems, setSystems] = useState([])
+  const [planets, setPlanets] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       fetch('/prun_universe_data.json').then(r => r.json()),
       fetch('/planet_data.json').then(r => r.json())
-    ]).then(([systems, planets]) => {
-      setStatus(`Loaded ${systems.length} systems and ${planets.length} planets`)
-    }).catch(err => {
-      setStatus(`Error: ${err.message}`)
+    ]).then(([systemData, planetData]) => {
+      setSystems(systemData)
+      setPlanets(planetData)
+      setLoading(false)
     })
   }, [])
 
-  return (
+  if (loading) return (
     <div style={{ background: '#0f1117', color: '#4f8ef7', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontSize: '24px' }}>
-      {status}
+      Loading universe...
     </div>
   )
+
+  return <MapView systems={systems} />
 }
 
 export default App
