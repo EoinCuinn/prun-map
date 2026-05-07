@@ -57,7 +57,7 @@ function Sidebar({ system, planets, onClose }) {
             </div>
           )}
 
-          
+          <a
             href={`https://prunplanner.org/plan/${planet.PlanetNaturalId}`}
             target="_blank"
             rel="noreferrer"
