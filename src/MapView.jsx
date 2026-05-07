@@ -17,14 +17,23 @@ function MapView({ systems }) {
 
     const g = svg.append('g')
 
-    // Use X and Z coordinates for 2D map (Y is vertical, mostly irrelevant)
     const xExtent = d3.extent(systems, d => d.PositionX)
     const zExtent = d3.extent(systems, d => d.PositionZ)
 
     const xScale = d3.scaleLinear().domain(xExtent).range([50, width - 50])
     const zScale = d3.scaleLinear().domain(zExtent).range([50, height - 50])
 
-    // Draw systems as dots
+    const tooltip = d3.select('body').append('div')
+      .style('position', 'absolute')
+      .style('background', '#1a1f2e')
+      .style('color', '#4f8ef7')
+      .style('padding', '4px 8px')
+      .style('border-radius', '4px')
+      .style('font-family', 'monospace')
+      .style('font-size', '12px')
+      .style('pointer-events', 'none')
+      .style('opacity', 0)
+
     g.selectAll('circle')
       .data(systems)
       .join('circle')
@@ -33,8 +42,22 @@ function MapView({ systems }) {
       .attr('r', 3)
       .attr('fill', '#4f8ef7')
       .attr('opacity', 0.8)
+      .on('mouseover', (event, d) => {
+        tooltip
+          .style('opacity', 1)
+          .html(d.Name)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mousemove', (event) => {
+        tooltip
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => {
+        tooltip.style('opacity', 0)
+      })
 
-    // Pan and zoom
     const zoom = d3.zoom()
       .scaleExtent([0.5, 20])
       .on('zoom', (event) => {
@@ -45,6 +68,7 @@ function MapView({ systems }) {
 
     return () => {
       svg.selectAll('*').remove()
+      tooltip.remove()
     }
   }, [systems])
 
