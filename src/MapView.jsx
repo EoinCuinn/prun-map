@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
-function MapView({ systems }) {
+function MapView({ systems, onSystemClick }) {
   const svgRef = useRef(null)
 
   useEffect(() => {
@@ -56,6 +56,10 @@ function MapView({ systems }) {
       })
       .on('mouseout', () => {
         tooltip.style('opacity', 0)
+      })
+      .on('click', (event, d) => {
+        event.stopPropagation()
+        onSystemClick(d)
       })
 
     const zoom = d3.zoom()
