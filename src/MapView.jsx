@@ -23,6 +23,36 @@ function MapView({ systems, onSystemClick }) {
     const xScale = d3.scaleLinear().domain(xExtent).range([50, width - 50])
     const zScale = d3.scaleLinear().domain(zExtent).range([50, height - 50])
 
+    // Build a lookup map for quick access
+    const systemById = {}
+    systems.forEach(s => { systemById[s.SystemId] = s })
+
+    // Build connection pairs (avoid duplicates)
+    const connections = []
+    const seen = new Set()
+    systems.forEach(s => {
+      if (!s.Connections) return
+      s.Connections.forEach(connId => {
+        const key = [s.SystemId, connId].sort().join('|')
+        if (!seen.has(key) && systemById[connId]) {
+          seen.add(key)
+          connections.push({ source: s, target: systemById[connId] })
+        }
+      })
+    })
+
+    // Draw connection lines first (so dots sit on top)
+    g.selectAll('line')
+      .data(connections)
+      .join('line')
+      .attr('x1', d => xScale(d.source.PositionX))
+      .attr('y1', d => zScale(d.source.PositionZ))
+      .attr('x2', d => xScale(d.target.PositionX))
+      .attr('y2', d => zScale(d.target.PositionZ))
+      .attr('stroke', '#1e3a5f')
+      .attr('stroke-width', 0.5)
+      .attr('opacity', 0.6)
+
     const tooltip = d3.select('body').append('div')
       .style('position', 'absolute')
       .style('background', '#1a1f2e')
