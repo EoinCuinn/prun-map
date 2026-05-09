@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import MapView from './MapView'
 import Sidebar from './Sidebar'
+import SearchBar from './SearchBar'
 
 function App() {
   const [systems, setSystems] = useState([])
@@ -28,6 +29,7 @@ function App() {
   return (
     <>
       <MapView systems={systems} onSystemClick={setSelectedSystem} />
+      <SearchBar systems={systems} planets={planets} onSelectSystem={setSelectedSystem} />
       <Sidebar system={selectedSystem} planets={planets} onClose={() => setSelectedSystem(null)} />
     </>
   )
