@@ -30,7 +30,7 @@ function Sidebar({ system, planets, onClose }) {
 
       {systemPlanets.map(planet => {
         const cogcTypes = planet.COGCPrograms
-          ? [...new Set(planet.COGCPrograms.map(p => p.ProgramType))]
+          ? [...new Set(planet.COGCPrograms.map(p => p.ProgramType).filter(Boolean))]
           : []
 
         return (
