@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
-// Generate a consistent colour for each sector from its numeric id
 function sectorColour(sectorId) {
   const palette = [
     '#4f8ef7', '#f7814f', '#4ff7a0', '#f74f8e', '#f7e14f',
@@ -14,15 +13,39 @@ function sectorColour(sectorId) {
   return palette[num % palette.length]
 }
 
-// Convex hull using d3.polygonHull — returns null if < 3 points
-function hullPoints(points) {
-  if (points.length < 3) return null
-  return d3.polygonHull(points)
+function axialRound(q, r) {
+  const s = -q - r
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s)
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s)
+  if (dq > dr && dq > ds) rq = -rr - rs
+  else if (dr > ds) rr = -rq - rs
+  return [rq, rr]
+}
+
+function pixelToAxial(x, y, r) {
+  const q = (2 / 3 * x) / r
+  const rCoord = (-1 / 3 * x + Math.sqrt(3) / 3 * y) / r
+  return axialRound(q, rCoord)
+}
+
+// Flat-top hex: pixel centre from axial coords
+function axialToPixel(q, r, size) {
+  const x = size * (3 / 2 * q)
+  const y = size * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r)
+  return [x, y]
+}
+
+// Flat-top hexagon path
+function hexPath(cx, cy, r) {
+  const pts = [0, 60, 120, 180, 240, 300].map(a => {
+    const rad = a * Math.PI / 180
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)]
+  })
+  return `M${pts.map(p => p.join(',')).join('L')}Z`
 }
 
 function MapView({ systems, onSystemClick, showLines, showSectors }) {
   const svgRef = useRef(null)
-  // Keep refs to the layer groups so we can show/hide without full redraw
   const sectorsGroupRef = useRef(null)
   const linesGroupRef = useRef(null)
 
@@ -39,62 +62,122 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
 
     const g = svg.append('g')
 
-    const xExtent = d3.extent(systems, d => d.PositionX)
-    const yExtent = d3.extent(systems, d => d.PositionY)
+    // ── Compute sector centroids in data-space ───────────────────────
+    const HEX_DATA_R = 140 / Math.sqrt(3) // ~80.8 data units
 
-    const xScale = d3.scaleLinear().domain(xExtent).range([50, width - 50])
-    const yScale = d3.scaleLinear().domain(yExtent).range([50, height - 50])
-
-    // ── Sector overlay ──────────────────────────────────────────────
-    // Group systems by SectorId, compute convex hull, draw polygon
-    const sectorMap = {}
+    const sectorSystems = {}
     systems.forEach(s => {
       if (!s.SectorId) return
-      if (!sectorMap[s.SectorId]) sectorMap[s.SectorId] = []
-      sectorMap[s.SectorId].push([xScale(s.PositionX), yScale(s.PositionY)])
+      if (!sectorSystems[s.SectorId]) sectorSystems[s.SectorId] = []
+      sectorSystems[s.SectorId].push(s)
     })
 
-    const sectorsGroup = g.append('g').attr('class', 'sectors-layer')
-    sectorsGroupRef.current = sectorsGroup
+    // Map each sector to axial grid coords from its centroid
+    const sectorAxial = {}
+    Object.entries(sectorSystems).forEach(([sid, sysList]) => {
+      const cx = sysList.reduce((a, s) => a + s.PositionX, 0) / sysList.length
+      const cy = sysList.reduce((a, s) => a + s.PositionY, 0) / sysList.length
+      sectorAxial[sid] = pixelToAxial(cx, -cy, HEX_DATA_R) // negate Y: game Y-up
+    })
 
-    Object.entries(sectorMap).forEach(([sectorId, points]) => {
-      const hull = hullPoints(points)
-      if (!hull) {
-        // Fewer than 3 systems: draw a circle around the single/pair point
-        const cx = d3.mean(points, p => p[0])
-        const cy = d3.mean(points, p => p[1])
-        sectorsGroup.append('circle')
-          .attr('cx', cx)
-          .attr('cy', cy)
-          .attr('r', 18)
-          .attr('fill', sectorColour(sectorId))
-          .attr('fill-opacity', 0.08)
-          .attr('stroke', sectorColour(sectorId))
-          .attr('stroke-opacity', 0.25)
-          .attr('stroke-width', 1)
-      } else {
-        const colour = sectorColour(sectorId)
-        // Expand the hull slightly for visual padding
-        const centroid = d3.polygonCentroid(hull)
-        const padded = hull.map(([px, py]) => {
-          const dx = px - centroid[0]
-          const dy = py - centroid[1]
-          const len = Math.sqrt(dx * dx + dy * dy) || 1
-          return [px + (dx / len) * 14, py + (dy / len) * 14]
-        })
+    // ── Convert axial coords to screen pixels ────────────────────────
+    // Find extent of axial coords to centre on screen
+    const allAxial = Object.values(sectorAxial)
+    const qVals = allAxial.map(a => a[0])
+    const rVals = allAxial.map(a => a[1])
 
-        sectorsGroup.append('path')
-          .attr('d', `M${padded.map(p => p.join(',')).join('L')}Z`)
-          .attr('fill', colour)
-          .attr('fill-opacity', 0.07)
-          .attr('stroke', colour)
-          .attr('stroke-opacity', 0.3)
-          .attr('stroke-width', 1)
-          .attr('stroke-linejoin', 'round')
+    // Hex size in screen pixels — fit to screen
+    const qExtent = [Math.min(...qVals), Math.max(...qVals)]
+    const rExtent = [Math.min(...rVals), Math.max(...rVals)]
+
+    // Width needed for flat-top hex grid: (qRange + 1) * 1.5 * size
+    // Height needed: (rRange + 1) * sqrt(3) * size
+    const qRange = qExtent[1] - qExtent[0] + 2
+    const rRange = rExtent[1] - rExtent[0] + 2
+    const hexSize = Math.min(
+      (width - 100) / (qRange * 1.5),
+      (height - 100) / (rRange * Math.sqrt(3))
+    )
+
+    // Centre offset
+    const [originX, originY] = axialToPixel(
+      (qExtent[0] + qExtent[1]) / 2,
+      (rExtent[0] + rExtent[1]) / 2,
+      hexSize
+    )
+    const offsetX = width / 2 - originX
+    const offsetY = height / 2 - originY
+
+    // Screen position of each sector's hex centre
+    const sectorScreenPos = {}
+    Object.entries(sectorAxial).forEach(([sid, [q, r]]) => {
+      const [px, py] = axialToPixel(q, r, hexSize)
+      sectorScreenPos[sid] = [px + offsetX, py + offsetY]
+    })
+
+    // Systems are positioned relative to their sector hex centre
+    // Pre-compute sector centroid data positions once
+    const sectorCentroidData = {}
+    Object.entries(sectorSystems).forEach(([sid, sysList]) => {
+      sectorCentroidData[sid] = {
+        cx: sysList.reduce((a, x) => a + x.PositionX, 0) / sysList.length,
+        cy: sysList.reduce((a, x) => a + x.PositionY, 0) / sysList.length,
+        xExtent: d3.extent(sysList, x => x.PositionX),
+        yExtent: d3.extent(sysList, x => x.PositionY),
       }
     })
 
-    // ── Connection lines ────────────────────────────────────────────
+    const systemScreenPos = (s) => {
+      const sid = s.SectorId
+      if (!sid || !sectorScreenPos[sid]) return [width / 2, height / 2]
+
+      const [hcx, hcy] = sectorScreenPos[sid]
+      const { cx: cxData, cy: cyData, xExtent: lxe, yExtent: lye } = sectorCentroidData[sid]
+
+      const localRange = Math.max(lxe[1] - lxe[0], lye[1] - lye[0], 1)
+      const maxOffset = (Math.sqrt(3) / 2 * hexSize) * 0.82
+      const scale = (maxOffset * 2) / localRange
+
+      let lx = (s.PositionX - cxData) * scale
+      let ly = -(s.PositionY - cyData) * scale
+
+      const dist = Math.sqrt(lx * lx + ly * ly)
+      if (dist > maxOffset) {
+        lx = (lx / dist) * maxOffset
+        ly = (ly / dist) * maxOffset
+      }
+
+      return [hcx + lx, hcy + ly]
+    }
+
+    // ── Sector hex layer ─────────────────────────────────────────────
+    const sectorsGroup = g.append('g').attr('class', 'sectors-layer')
+    sectorsGroupRef.current = sectorsGroup
+
+    Object.entries(sectorScreenPos).forEach(([sid, [scx, scy]]) => {
+      const colour = sectorColour(sid)
+      sectorsGroup.append('path')
+        .attr('d', hexPath(scx, scy, hexSize - 2))
+        .attr('fill', colour)
+        .attr('fill-opacity', 0.07)
+        .attr('stroke', colour)
+        .attr('stroke-opacity', 0.35)
+        .attr('stroke-width', 1)
+
+      sectorsGroup.append('text')
+        .attr('x', scx)
+        .attr('y', scy)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', colour)
+        .attr('fill-opacity', 0.2)
+        .attr('font-family', 'monospace')
+        .attr('font-size', hexSize * 0.3)
+        .attr('pointer-events', 'none')
+        .text(sid.replace('sector-', 'S'))
+    })
+
+    // ── Connection lines ─────────────────────────────────────────────
     const systemById = {}
     systems.forEach(s => { systemById[s.SystemId] = s })
 
@@ -103,11 +186,10 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
     systems.forEach(s => {
       if (!s.Connections) return
       s.Connections.forEach(conn => {
-        const connId = conn.ConnectingId
-        const key = [s.SystemId, connId].sort().join('|')
-        if (!seen.has(key) && systemById[connId]) {
+        const key = [s.SystemId, conn.ConnectingId].sort().join('|')
+        if (!seen.has(key) && systemById[conn.ConnectingId]) {
           seen.add(key)
-          connections.push({ source: s, target: systemById[connId] })
+          connections.push({ source: s, target: systemById[conn.ConnectingId] })
         }
       })
     })
@@ -118,15 +200,15 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
     linesGroup.selectAll('line')
       .data(connections)
       .join('line')
-      .attr('x1', d => xScale(d.source.PositionX))
-      .attr('y1', d => yScale(d.source.PositionY))
-      .attr('x2', d => xScale(d.target.PositionX))
-      .attr('y2', d => yScale(d.target.PositionY))
+      .attr('x1', d => systemScreenPos(d.source)[0])
+      .attr('y1', d => systemScreenPos(d.source)[1])
+      .attr('x2', d => systemScreenPos(d.target)[0])
+      .attr('y2', d => systemScreenPos(d.target)[1])
       .attr('stroke', '#1e3a5f')
       .attr('stroke-width', 0.5)
       .attr('opacity', 0.6)
 
-    // ── Tooltip ─────────────────────────────────────────────────────
+    // ── Tooltip ──────────────────────────────────────────────────────
     const tooltip = d3.select('body').append('div')
       .style('position', 'absolute')
       .style('background', '#1a1f2e')
@@ -138,42 +220,32 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
       .style('pointer-events', 'none')
       .style('opacity', 0)
 
-    // ── System dots ─────────────────────────────────────────────────
+    // ── System dots ──────────────────────────────────────────────────
     g.selectAll('circle.system')
       .data(systems)
       .join('circle')
       .attr('class', 'system')
-      .attr('cx', d => xScale(d.PositionX))
-      .attr('cy', d => yScale(d.PositionY))
+      .attr('cx', d => systemScreenPos(d)[0])
+      .attr('cy', d => systemScreenPos(d)[1])
       .attr('r', 3)
       .attr('fill', '#4f8ef7')
       .attr('opacity', 0.8)
       .on('mouseover', (event, d) => {
-        tooltip
-          .style('opacity', 1)
-          .html(d.Name)
+        tooltip.style('opacity', 1).html(d.Name)
           .style('left', (event.pageX + 10) + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mousemove', (event) => {
-        tooltip
-          .style('left', (event.pageX + 10) + 'px')
+        tooltip.style('left', (event.pageX + 10) + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
-      .on('mouseout', () => {
-        tooltip.style('opacity', 0)
-      })
-      .on('click', (event, d) => {
-        event.stopPropagation()
-        onSystemClick(d)
-      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
+      .on('click', (event, d) => { event.stopPropagation(); onSystemClick(d) })
 
-    // ── Zoom & pan ──────────────────────────────────────────────────
+    // ── Zoom & pan ───────────────────────────────────────────────────
     const zoom = d3.zoom()
-      .scaleExtent([0.5, 20])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform)
-      })
+      .scaleExtent([0.3, 20])
+      .on('zoom', (event) => { g.attr('transform', event.transform) })
 
     svg.call(zoom)
 
@@ -185,17 +257,14 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
     }
   }, [systems])
 
-  // Toggle visibility without redrawing — fast & clean
   useEffect(() => {
-    if (sectorsGroupRef.current) {
+    if (sectorsGroupRef.current)
       sectorsGroupRef.current.style('display', showSectors ? null : 'none')
-    }
   }, [showSectors])
 
   useEffect(() => {
-    if (linesGroupRef.current) {
+    if (linesGroupRef.current)
       linesGroupRef.current.style('display', showLines ? null : 'none')
-    }
   }, [showLines])
 
   return <svg ref={svgRef} />
