@@ -40,10 +40,10 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
     const g = svg.append('g')
 
     const xExtent = d3.extent(systems, d => d.PositionX)
-    const zExtent = d3.extent(systems, d => d.PositionZ)
+    const yExtent = d3.extent(systems, d => d.PositionY)
 
     const xScale = d3.scaleLinear().domain(xExtent).range([50, width - 50])
-    const zScale = d3.scaleLinear().domain(zExtent).range([50, height - 50])
+    const yScale = d3.scaleLinear().domain(yExtent).range([50, height - 50])
 
     // ── Sector overlay ──────────────────────────────────────────────
     // Group systems by SectorId, compute convex hull, draw polygon
@@ -51,7 +51,7 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
     systems.forEach(s => {
       if (!s.SectorId) return
       if (!sectorMap[s.SectorId]) sectorMap[s.SectorId] = []
-      sectorMap[s.SectorId].push([xScale(s.PositionX), zScale(s.PositionZ)])
+      sectorMap[s.SectorId].push([xScale(s.PositionX), yScale(s.PositionY)])
     })
 
     const sectorsGroup = g.append('g').attr('class', 'sectors-layer')
@@ -119,9 +119,9 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
       .data(connections)
       .join('line')
       .attr('x1', d => xScale(d.source.PositionX))
-      .attr('y1', d => zScale(d.source.PositionZ))
+      .attr('y1', d => yScale(d.source.PositionY))
       .attr('x2', d => xScale(d.target.PositionX))
-      .attr('y2', d => zScale(d.target.PositionZ))
+      .attr('y2', d => yScale(d.target.PositionY))
       .attr('stroke', '#1e3a5f')
       .attr('stroke-width', 0.5)
       .attr('opacity', 0.6)
@@ -144,7 +144,7 @@ function MapView({ systems, onSystemClick, showLines, showSectors }) {
       .join('circle')
       .attr('class', 'system')
       .attr('cx', d => xScale(d.PositionX))
-      .attr('cy', d => zScale(d.PositionZ))
+      .attr('cy', d => yScale(d.PositionY))
       .attr('r', 3)
       .attr('fill', '#4f8ef7')
       .attr('opacity', 0.8)
