@@ -32,7 +32,8 @@ function MapView({ systems, onSystemClick }) {
     const seen = new Set()
     systems.forEach(s => {
       if (!s.Connections) return
-      s.Connections.forEach(connId => {
+      s.Connections.forEach(conn => {
+        const connId = conn.ConnectingId
         const key = [s.SystemId, connId].sort().join('|')
         if (!seen.has(key) && systemById[connId]) {
           seen.add(key)
