@@ -47,9 +47,17 @@ function FilterPanel({ activeCogc, onCogcChange, activeResources, onResourceChan
     setResourceQuery('')
   }
 
+  const EXTRACTABLE = new Set([
+    'ALO','AMM','AR','AUO','BER','BOR','BRM','BTS','CLI','CUO',
+    'F','FEO','GAL','H','H2O','HAL','HE','HE3','HEX','KR',
+    'LES','LIO','LST','MAG','MGS','N','NE','O','REO','SCR',
+    'SIO','TAI','TCO','TIO','TS','ZIR'
+  ])
+
   const suggestions = resourceQuery.length >= 1
     ? materials
         .filter(m =>
+          EXTRACTABLE.has(m.Ticker) &&
           m.Ticker.toLowerCase().startsWith(resourceQuery.toLowerCase()) &&
           !activeResources.includes(m.Ticker)
         )
