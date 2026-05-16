@@ -1,23 +1,27 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
 const COGC_TYPES = [
-  { key: 'ADVERTISING_AGRICULTURE',        label: 'Agriculture' },
-  { key: 'ADVERTISING_CHEMISTRY',          label: 'Chemistry' },
-  { key: 'ADVERTISING_CONSTRUCTION',       label: 'Construction' },
-  { key: 'ADVERTISING_ELECTRONICS',        label: 'Electronics' },
-  { key: 'ADVERTISING_FOOD_INDUSTRIES',    label: 'Food Industries' },
-  { key: 'ADVERTISING_FUEL_REFINING',      label: 'Fuel Refining' },
-  { key: 'ADVERTISING_MANUFACTURING',      label: 'Manufacturing' },
-  { key: 'ADVERTISING_METALLURGY',         label: 'Metallurgy' },
-  { key: 'ADVERTISING_RESOURCE_EXTRACTION',label: 'Resource Extraction' },
-  { key: 'WORKFORCE_PIONEERS',             label: 'Workforce: Pioneers' },
-  { key: 'WORKFORCE_SETTLERS',             label: 'Workforce: Settlers' },
+  { key: 'ADVERTISING_AGRICULTURE',         label: 'Agriculture' },
+  { key: 'ADVERTISING_CHEMISTRY',           label: 'Chemistry' },
+  { key: 'ADVERTISING_CONSTRUCTION',        label: 'Construction' },
+  { key: 'ADVERTISING_ELECTRONICS',         label: 'Electronics' },
+  { key: 'ADVERTISING_FOOD_INDUSTRIES',     label: 'Food Industries' },
+  { key: 'ADVERTISING_FUEL_REFINING',       label: 'Fuel Refining' },
+  { key: 'ADVERTISING_MANUFACTURING',       label: 'Manufacturing' },
+  { key: 'ADVERTISING_METALLURGY',          label: 'Metallurgy' },
+  { key: 'ADVERTISING_RESOURCE_EXTRACTION', label: 'Resource Extraction' },
+  { key: 'WORKFORCE_PIONEERS',              label: 'Workforce: Pioneers' },
+  { key: 'WORKFORCE_SETTLERS',              label: 'Workforce: Settlers' },
 ]
 
-function FilterPanel({ activeCogc, onCogcChange }) {
+function FilterPanel({ activeCogc, onCogcChange, activeResources, onResourceChange, materials }) {
   const [open, setOpen] = useState(false)
+  const [resourceQuery, setResourceQuery] = useState('')
+  const inputRef = useRef(null)
 
-  const toggle = (key) => {
+  const hasActive = activeCogc.length > 0 || activeResources.length > 0
+
+  const toggleCogc = (key) => {
     if (activeCogc.includes(key)) {
       onCogcChange(activeCogc.filter(k => k !== key))
     } else {
@@ -25,7 +29,32 @@ function FilterPanel({ activeCogc, onCogcChange }) {
     }
   }
 
-  const hasActive = activeCogc.length > 0
+  const addResource = (ticker) => {
+    if (!activeResources.includes(ticker)) {
+      onResourceChange([...activeResources, ticker])
+    }
+    setResourceQuery('')
+    inputRef.current?.focus()
+  }
+
+  const removeResource = (ticker) => {
+    onResourceChange(activeResources.filter(t => t !== ticker))
+  }
+
+  const clearAll = () => {
+    onCogcChange([])
+    onResourceChange([])
+    setResourceQuery('')
+  }
+
+  const suggestions = resourceQuery.length >= 1
+    ? materials
+        .filter(m =>
+          m.Ticker.toLowerCase().startsWith(resourceQuery.toLowerCase()) &&
+          !activeResources.includes(m.Ticker)
+        )
+        .slice(0, 8)
+    : []
 
   return (
     <div style={{
@@ -36,6 +65,7 @@ function FilterPanel({ activeCogc, onCogcChange }) {
       fontFamily: 'monospace',
       width: '220px',
     }}>
+      {/* Toggle button */}
       <button
         onClick={() => setOpen(v => !v)}
         style={{
@@ -52,13 +82,14 @@ function FilterPanel({ activeCogc, onCogcChange }) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          fontFamily: 'monospace',
         }}
       >
-        <span>▼ FILTERS {hasActive ? `(${activeCogc.length})` : ''}</span>
+        <span>▼ FILTERS {hasActive ? `(${activeCogc.length + activeResources.length})` : ''}</span>
         {hasActive && (
           <span
-            onClick={e => { e.stopPropagation(); onCogcChange([]) }}
-            style={{ color: '#888', fontSize: '11px', marginLeft: '8px' }}
+            onClick={e => { e.stopPropagation(); clearAll() }}
+            style={{ color: '#888', fontSize: '11px' }}
           >
             clear
           </span>
@@ -71,41 +102,131 @@ function FilterPanel({ activeCogc, onCogcChange }) {
           border: '1px solid #1e3a5f',
           borderTop: 'none',
           borderRadius: '0 0 4px 4px',
-          padding: '8px 0',
+          paddingBottom: '8px',
         }}>
-          <div style={{ color: '#4a5a7a', fontSize: '10px', padding: '2px 12px 6px', letterSpacing: '0.1em' }}>
-            COGC PROGRAM
-          </div>
-          {COGC_TYPES.map(({ key, label }) => {
-            const active = activeCogc.includes(key)
-            return (
-              <div
-                key={key}
-                onClick={() => toggle(key)}
-                style={{
-                  padding: '4px 12px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  color: active ? '#4f8ef7' : '#6a8aaa',
-                  background: active ? 'rgba(79,142,247,0.08)' : 'transparent',
-                  fontSize: '12px',
-                }}
-              >
-                <span style={{
-                  width: '10px',
-                  height: '10px',
-                  border: `1px solid ${active ? '#4f8ef7' : '#3a4a5f'}`,
-                  borderRadius: '2px',
-                  background: active ? '#4f8ef7' : 'transparent',
-                  display: 'inline-block',
-                  flexShrink: 0,
-                }} />
-                {label}
+
+          {/* ── Resource filter ── */}
+          <div style={{ padding: '8px 12px 4px', borderBottom: '1px solid #1e3a5f' }}>
+            <div style={{ color: '#4a5a7a', fontSize: '10px', letterSpacing: '0.1em', marginBottom: '6px' }}>
+              RESOURCE (TICKER)
+            </div>
+
+            {/* Active resource chips */}
+            {activeResources.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                {activeResources.map(ticker => (
+                  <span key={ticker} style={{
+                    background: '#1e3a5f',
+                    color: '#4f8ef7',
+                    border: '1px solid #4f8ef7',
+                    borderRadius: '3px',
+                    padding: '1px 6px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    {ticker}
+                    <span onClick={() => removeResource(ticker)} style={{ color: '#888' }}>×</span>
+                  </span>
+                ))}
               </div>
-            )
-          })}
+            )}
+
+            {/* Input */}
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={inputRef}
+                value={resourceQuery}
+                onChange={e => setResourceQuery(e.target.value.toUpperCase())}
+                placeholder="Type ticker e.g. FEO"
+                style={{
+                  width: '100%',
+                  background: '#0f1117',
+                  border: '1px solid #1e3a5f',
+                  borderRadius: '3px',
+                  color: '#a0b8d8',
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  padding: '4px 8px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {/* Suggestions dropdown */}
+              {suggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: '#1a1f2e',
+                  border: '1px solid #1e3a5f',
+                  borderTop: 'none',
+                  borderRadius: '0 0 3px 3px',
+                  zIndex: 300,
+                }}>
+                  {suggestions.map(m => (
+                    <div
+                      key={m.Ticker}
+                      onClick={() => addResource(m.Ticker)}
+                      style={{
+                        padding: '4px 8px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        color: '#a0b8d8',
+                        display: 'flex',
+                        gap: '8px',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#1e3a5f'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ color: '#4f8ef7', minWidth: '36px' }}>{m.Ticker}</span>
+                      <span style={{ color: '#4a5a7a', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.Name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── COGC filter ── */}
+          <div style={{ paddingTop: '8px' }}>
+            <div style={{ color: '#4a5a7a', fontSize: '10px', padding: '0 12px 6px', letterSpacing: '0.1em' }}>
+              COGC PROGRAM
+            </div>
+            {COGC_TYPES.map(({ key, label }) => {
+              const active = activeCogc.includes(key)
+              return (
+                <div
+                  key={key}
+                  onClick={() => toggleCogc(key)}
+                  style={{
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: active ? '#4f8ef7' : '#6a8aaa',
+                    background: active ? 'rgba(79,142,247,0.08)' : 'transparent',
+                    fontSize: '12px',
+                  }}
+                >
+                  <span style={{
+                    width: '10px',
+                    height: '10px',
+                    border: `1px solid ${active ? '#4f8ef7' : '#3a4a5f'}`,
+                    borderRadius: '2px',
+                    background: active ? '#4f8ef7' : 'transparent',
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }} />
+                  {label}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

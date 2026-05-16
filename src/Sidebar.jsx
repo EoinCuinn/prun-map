@@ -8,10 +8,19 @@ function Tag({ tag, label }) {
   )
 }
 
-function Sidebar({ system, planets, onClose }) {
+const RESOURCE_TYPE_COLOURS = {
+  MINERAL: '#a0b8d8',
+  LIQUID:  '#4ff7e1',
+  GASEOUS: '#f7e14f',
+}
+
+function Sidebar({ system, planets, materials, onClose }) {
   if (!system) return null
 
   const systemPlanets = planets.filter(p => p.SystemId === system.SystemId)
+
+  const materialMap = {}
+  materials.forEach(m => { materialMap[m.MaterialId] = m })
 
   return (
     <div style={{
@@ -51,6 +60,11 @@ function Sidebar({ system, planets, onClose }) {
           planet.HasAdministrationCenter && { tag: 'ADM', label: 'Administration Center' },
         ].filter(Boolean)
 
+        const resources = (planet.Resources || [])
+          .map(r => ({ ...r, material: materialMap[r.MaterialId] }))
+          .filter(r => r.material)
+          .sort((a, b) => b.Factor - a.Factor)
+
         return (
           <div key={planet.PlanetNaturalId} style={{
             marginBottom: '16px',
@@ -78,6 +92,31 @@ function Sidebar({ system, planets, onClose }) {
             {cogcTypes.length > 0 && (
               <div style={{ color: '#f7a84f', fontSize: '11px', marginBottom: '6px' }}>
                 COGC: {cogcTypes.join(', ')}
+              </div>
+            )}
+
+            {resources.length > 0 && (
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ color: '#4a5a7a', fontSize: '10px', letterSpacing: '0.1em', marginBottom: '4px' }}>
+                  RESOURCES
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {resources.map(r => {
+                    const pct = Math.round(r.Factor * 100)
+                    const colour = RESOURCE_TYPE_COLOURS[r.ResourceType] || '#888'
+                    return (
+                      <div key={r.MaterialId} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
+                        <span style={{ color: colour, minWidth: '32px', fontWeight: 'bold' }}>
+                          {r.material.Ticker}
+                        </span>
+                        <div style={{ flex: 1, background: '#1a1f2e', borderRadius: '2px', height: '4px', overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: colour, borderRadius: '2px' }} />
+                        </div>
+                        <span style={{ color: '#4a5a7a', minWidth: '30px', textAlign: 'right' }}>{pct}%</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 

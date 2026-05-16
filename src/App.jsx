@@ -7,6 +7,7 @@ import FilterPanel from './FilterPanel'
 function App() {
   const [systems, setSystems] = useState([])
   const [planets, setPlanets] = useState([])
+  const [materials, setMaterials] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedSystem, setSelectedSystem] = useState(null)
   const [highlightedSystem, setHighlightedSystem] = useState(null)
@@ -15,31 +16,52 @@ function App() {
   const [showSectors, setShowSectors] = useState(true)
   const [showSystemNames, setShowSystemNames] = useState(false)
   const [activeCogc, setActiveCogc] = useState([])
+  const [activeResources, setActiveResources] = useState([])
 
   useEffect(() => {
     Promise.all([
       fetch('/prun_universe_data.json').then(r => r.json()),
-      fetch('/planet_data.json').then(r => r.json())
-    ]).then(([systemData, planetData]) => {
+      fetch('/planet_data.json').then(r => r.json()),
+      fetch('/material_data.json').then(r => r.json()),
+    ]).then(([systemData, planetData, materialData]) => {
       setSystems(systemData)
       setPlanets(planetData)
+      setMaterials(materialData)
       setLoading(false)
     })
   }, [])
 
-  // Compute the set of SystemIds that match active filters
+  const materialIdToTicker = useMemo(() => {
+    const map = {}
+    materials.forEach(m => { map[m.MaterialId] = m.Ticker })
+    return map
+  }, [materials])
+
   const filteredSystemIds = useMemo(() => {
-    if (activeCogc.length === 0) return null // null = no filter active
+    const hasCogc = activeCogc.length > 0
+    const hasRes = activeResources.length > 0
+    if (!hasCogc && !hasRes) return null
+
     const matched = new Set()
     planets.forEach(p => {
-      if (!p.SystemId || !p.COGCPrograms) return
-      const types = p.COGCPrograms.map(c => c.ProgramType).filter(Boolean)
-      if (activeCogc.some(f => types.includes(f))) {
-        matched.add(p.SystemId)
+      if (!p.SystemId) return
+
+      let cogcOk = true
+      if (hasCogc) {
+        const types = (p.COGCPrograms || []).map(c => c.ProgramType).filter(Boolean)
+        cogcOk = activeCogc.some(f => types.includes(f))
       }
+
+      let resOk = true
+      if (hasRes) {
+        const tickers = (p.Resources || []).map(r => materialIdToTicker[r.MaterialId]).filter(Boolean)
+        resOk = activeResources.every(ticker => tickers.includes(ticker))
+      }
+
+      if (cogcOk && resOk) matched.add(p.SystemId)
     })
     return matched
-  }, [activeCogc, planets])
+  }, [activeCogc, activeResources, planets, materialIdToTicker])
 
   if (loading) return (
     <div style={{ background: '#0f1117', color: '#4f8ef7', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontSize: '24px' }}>
@@ -87,8 +109,11 @@ function App() {
       <FilterPanel
         activeCogc={activeCogc}
         onCogcChange={setActiveCogc}
+        activeResources={activeResources}
+        onResourceChange={setActiveResources}
+        materials={materials}
       />
-      <Sidebar system={selectedSystem} planets={planets} onClose={() => setSelectedSystem(null)} />
+      <Sidebar system={selectedSystem} planets={planets} materials={materials} onClose={() => setSelectedSystem(null)} />
 
       <div style={{
         position: 'fixed',
