@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-function SearchBar({ systems, planets, onSelectSystem }) {
+function SearchBar({ systems, planets, onSelectSystem, onHoverSystem }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
 
@@ -37,6 +37,16 @@ function SearchBar({ systems, planets, onSelectSystem }) {
     }
     setQuery('')
     setResults([])
+    onHoverSystem(null)
+  }
+
+  const handleHover = (result) => {
+    if (result.type === 'system') {
+      onHoverSystem(result.data)
+    } else {
+      const system = systems.find(s => s.SystemId === result.data.SystemId)
+      if (system) onHoverSystem(system)
+    }
   }
 
   return (
@@ -70,6 +80,8 @@ function SearchBar({ systems, planets, onSelectSystem }) {
             <div
               key={i}
               onClick={() => handleSelect(r)}
+              onMouseEnter={() => handleHover(r)}
+              onMouseLeave={() => onHoverSystem(null)}
               style={{
                 padding: '8px 12px',
                 cursor: 'pointer',
@@ -78,8 +90,8 @@ function SearchBar({ systems, planets, onSelectSystem }) {
                 fontFamily: 'monospace',
                 borderBottom: '1px solid #222'
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#0f1117'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onMouseOver={e => e.currentTarget.style.background = '#0f1117'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
             >
               {r.type === 'planet' && <span style={{ color: '#555', marginRight: '6px' }}>◆</span>}
               {r.label}

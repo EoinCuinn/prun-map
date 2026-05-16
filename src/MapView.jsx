@@ -61,7 +61,7 @@ function hexPath(cx, cy, r) {
   return `M${pts.map(p => p.join(',')).join('L')}Z`
 }
 
-function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNames, highlightedSystem, hoveredSystem }) {
+function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines, showSectors, showSystemNames, highlightedSystem, hoveredSystem }) {
   const svgRef = useRef(null)
   const sectorsGroupRef = useRef(null)
   const linesGroupRef = useRef(null)
@@ -70,6 +70,15 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
   const zoomRef = useRef(null)
   const svgSelRef = useRef(null)
   const gRef = useRef(null)
+  const selectedSectorRef = useRef(null)
+  const defaultTransformRef = useRef(null)
+  const preClickTransformRef = useRef(null)
+  const showSystemNamesRef = useRef(showSystemNames)
+
+  // Keep ref in sync with prop so deselect can read current value
+  useEffect(() => {
+    showSystemNamesRef.current = showSystemNames
+  }, [showSystemNames])
 
   useEffect(() => {
     if (!systems || systems.length === 0) return
@@ -153,10 +162,36 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
       return [hcx + lx, hcy + ly]
     }
 
-    // Store positions for highlight use
     systems.forEach(s => {
       systemPosRef.current[s.SystemId] = systemScreenPos(s)
     })
+
+    // ── Deselect helper ──────────────────────────────────────────────
+    const deselect = () => {
+      selectedSectorRef.current = null
+
+      // Restore all hex appearances
+      sectorsGroupRef.current.selectAll('path.sector-hex')
+        .attr('fill-opacity', 0.07)
+        .attr('stroke-opacity', 0.35)
+
+      // Restore name labels to match the NAMES toggle state
+      if (systemNamesGroupRef.current) {
+        if (showSystemNamesRef.current) {
+          systemNamesGroupRef.current.style('display', null)
+          systemNamesGroupRef.current.selectAll('text.system-name').style('display', null)
+        } else {
+          systemNamesGroupRef.current.style('display', 'none')
+        }
+      }
+
+      // Zoom back to where we were before clicking the sector
+      const restoreTo = preClickTransformRef.current || defaultTransformRef.current
+      if (svgSelRef.current && zoomRef.current && restoreTo) {
+        svgSelRef.current.transition().duration(600)
+          .call(zoomRef.current.transform, restoreTo)
+      }
+    }
 
     // ── Sector hex layer ─────────────────────────────────────────────
     const sectorsGroup = g.append('g').attr('class', 'sectors-layer')
@@ -164,13 +199,55 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
 
     Object.entries(sectorScreenPos).forEach(([sid, [scx, scy]]) => {
       const colour = sectorColour(sid)
+
       sectorsGroup.append('path')
+        .attr('class', 'sector-hex')
+        .attr('data-sid', sid)
         .attr('d', hexPath(scx, scy, hexSize - 2))
         .attr('fill', colour)
         .attr('fill-opacity', 0.07)
         .attr('stroke', colour)
         .attr('stroke-opacity', 0.35)
         .attr('stroke-width', 1)
+        .style('cursor', 'pointer')
+        .on('click', (event) => {
+          event.stopPropagation()
+
+          // Clicking the already-selected sector deselects
+          if (selectedSectorRef.current === sid) {
+            deselect()
+            return
+          }
+
+          selectedSectorRef.current = sid
+
+          // Save current zoom so we can restore it on deselect
+          preClickTransformRef.current = d3.zoomTransform(svgSelRef.current.node())
+
+          // Dim all hexes, highlight selected
+          sectorsGroup.selectAll('path.sector-hex')
+            .attr('fill-opacity', 0.02)
+            .attr('stroke-opacity', 0.08)
+
+          sectorsGroup.select(`[data-sid="${sid}"]`)
+            .attr('fill-opacity', 0.25)
+            .attr('stroke-opacity', 0.9)
+
+          // Show only this sector's system names
+          if (systemNamesGroupRef.current) {
+            systemNamesGroupRef.current.style('display', null)
+            systemNamesGroupRef.current.selectAll('text.system-name')
+              .style('display', d => d.SectorId === sid ? null : 'none')
+          }
+
+          // Zoom to fit this sector
+          const [hcx, hcy] = sectorScreenPos[sid]
+          const scale = Math.min(width, height) / (hexSize * 2.2)
+          const tx = width / 2 - hcx * scale
+          const ty = height / 2 - hcy * scale
+          svgSelRef.current.transition().duration(600)
+            .call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+        })
 
       sectorsGroup.append('text')
         .attr('x', scx).attr('y', scy)
@@ -178,7 +255,7 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
         .attr('dominant-baseline', 'middle')
         .attr('fill', colour).attr('fill-opacity', 0.2)
         .attr('font-family', 'monospace')
-        .attr('font-size', hexSize * 0.3)
+        .attr('font-size', hexSize * 0.7)
         .attr('pointer-events', 'none')
         .text(SECTOR_NAMES[parseInt(sid.replace('sector-', ''))] || sid.replace('sector-', 'S'))
     })
@@ -213,17 +290,32 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
       .attr('stroke-width', 0.5)
       .attr('opacity', 0.6)
 
+    // Build a lookup: SystemId -> sorted list of planets
+    const planetsBySystem = {}
+    if (planets) {
+      planets.forEach(p => {
+        if (!p.SystemId) return
+        if (!planetsBySystem[p.SystemId]) planetsBySystem[p.SystemId] = []
+        planetsBySystem[p.SystemId].push(p)
+      })
+      // Sort each system's planets by NaturalId
+      Object.values(planetsBySystem).forEach(list => {
+        list.sort((a, b) => a.PlanetNaturalId.localeCompare(b.PlanetNaturalId))
+      })
+    }
+
     // ── Tooltip ──────────────────────────────────────────────────────
     const tooltip = d3.select('body').append('div')
       .style('position', 'absolute')
       .style('background', '#1a1f2e')
-      .style('color', '#4f8ef7')
-      .style('padding', '4px 8px')
-      .style('border-radius', '4px')
+      .style('border', '1px solid #2a3a5f')
+      .style('border-radius', '6px')
       .style('font-family', 'monospace')
       .style('font-size', '12px')
       .style('pointer-events', 'none')
       .style('opacity', 0)
+      .style('min-width', '160px')
+      .style('box-shadow', '0 4px 16px rgba(0,0,0,0.5)')
 
     // ── System dots ──────────────────────────────────────────────────
     g.selectAll('circle.system')
@@ -235,13 +327,53 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
       .attr('fill', '#4f8ef7')
       .attr('opacity', 0.8)
       .on('mouseover', (event, d) => {
-        tooltip.style('opacity', 1).html(d.Name)
-          .style('left', (event.pageX + 10) + 'px')
-          .style('top', (event.pageY - 10) + 'px')
+        const sysPlanets = planetsBySystem[d.SystemId] || []
+        const headerHtml = `
+          <div style="padding:6px 10px 4px; border-bottom:1px solid #2a3a5f;">
+            <div style="color:#4f8ef7; font-weight:bold; font-size:13px;">${d.Name}</div>
+          </div>`
+        const planetRows = sysPlanets.map(p => {
+          const name = p.PlanetName && p.PlanetName !== p.PlanetNaturalId
+            ? `<span style="color:#e0e8ff">${p.PlanetName}</span>`
+            : ''
+          const natId = `<span style="color:#6a8aaa">${p.PlanetNaturalId}</span>`
+          return `<div style="padding:2px 10px; display:flex; justify-content:space-between; gap:12px;">
+            <span>${name}</span><span>${natId}</span>
+          </div>`
+        }).join('')
+        const emptyRow = sysPlanets.length === 0
+          ? `<div style="padding:4px 10px; color:#4a5a7a; font-style:italic;">No planets</div>`
+          : ''
+        tooltip
+          .style('opacity', 1)
+          .html(headerHtml + `<div style="padding:4px 0;">${planetRows}${emptyRow}</div>`)
+          .style('left', '-9999px').style('top', '-9999px') // render offscreen first to measure
+        // Position after render so we can measure height
+        requestAnimationFrame(() => {
+          const th = tooltip.node().offsetHeight
+          const tw = tooltip.node().offsetWidth
+          const margin = 8
+          let tx = event.pageX + 14
+          let ty = event.pageY - 10
+          // Flip left if overflowing right
+          if (tx + tw + margin > window.innerWidth) tx = event.pageX - tw - 14
+          // Flip up if overflowing bottom
+          if (ty + th + margin > window.innerHeight) ty = event.pageY - th + 10
+          // Clamp top
+          if (ty < margin) ty = margin
+          tooltip.style('left', tx + 'px').style('top', ty + 'px')
+        })
       })
       .on('mousemove', (event) => {
-        tooltip.style('left', (event.pageX + 10) + 'px')
-          .style('top', (event.pageY - 10) + 'px')
+        const th = tooltip.node().offsetHeight
+        const tw = tooltip.node().offsetWidth
+        const margin = 8
+        let tx = event.pageX + 14
+        let ty = event.pageY - 10
+        if (tx + tw + margin > window.innerWidth) tx = event.pageX - tw - 14
+        if (ty + th + margin > window.innerHeight) ty = event.pageY - th + 10
+        if (ty < margin) ty = margin
+        tooltip.style('left', tx + 'px').style('top', ty + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
       .on('click', (event, d) => { event.stopPropagation(); onSystemClick(d) })
@@ -249,7 +381,7 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
     // ── System name labels ───────────────────────────────────────────
     const systemNamesGroup = g.append('g')
       .attr('class', 'system-names-layer')
-      .style('display', 'none') // off by default
+      .style('display', 'none')
     systemNamesGroupRef.current = systemNamesGroup
 
     systemNamesGroup.selectAll('text.system-name')
@@ -266,6 +398,14 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
       .attr('pointer-events', 'none')
       .text(d => d.Name)
 
+    // ── Click empty space to deselect / close sidebar ───────────────
+    svg.on('click', () => {
+      if (selectedSectorRef.current) {
+        deselect()
+      }
+      if (onBackgroundClick) onBackgroundClick()
+    })
+
     // ── Zoom & pan ───────────────────────────────────────────────────
     const zoom = d3.zoom()
       .scaleExtent([0.3, 20])
@@ -273,15 +413,20 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
 
     zoomRef.current = zoom
     svg.call(zoom)
-    svg.call(zoom.transform, d3.zoomIdentity.scale(1))
+
+    const defaultTransform = d3.zoomIdentity.scale(1)
+    defaultTransformRef.current = defaultTransform
+    svg.call(zoom.transform, defaultTransform)
 
     return () => {
       svg.selectAll('*').remove()
+      svg.on('click', null)
       tooltip.remove()
       sectorsGroupRef.current = null
       linesGroupRef.current = null
       systemNamesGroupRef.current = null
       systemPosRef.current = {}
+      selectedSectorRef.current = null
     }
   }, [systems])
 
@@ -324,8 +469,11 @@ function MapView({ systems, onSystemClick, showLines, showSectors, showSystemNam
   }, [showLines])
 
   useEffect(() => {
-    if (systemNamesGroupRef.current)
+    if (!systemNamesGroupRef.current) return
+    // Only honour the toggle if no sector is currently selected
+    if (!selectedSectorRef.current) {
       systemNamesGroupRef.current.style('display', showSystemNames ? null : 'none')
+    }
   }, [showSystemNames])
 
   // ── Hover preview effect ─────────────────────────────────────────

@@ -1,3 +1,13 @@
+function Tag({ tag, label }) {
+  return (
+    <span title={label} style={{
+      cursor: 'default',
+      borderBottom: '1px dotted #555',
+      paddingBottom: '1px',
+    }}>{tag}</span>
+  )
+}
+
 function Sidebar({ system, planets, onClose }) {
   if (!system) return null
 
@@ -33,6 +43,14 @@ function Sidebar({ system, planets, onClose }) {
           ? [...new Set(planet.COGCPrograms.map(p => p.ProgramType).filter(Boolean))]
           : []
 
+        const facilities = [
+          planet.HasLocalMarket && { tag: 'LM', label: 'Local Market' },
+          planet.HasWarehouse && { tag: 'WH', label: 'Warehouse' },
+          planet.HasShipyard && { tag: 'SY', label: 'Shipyard' },
+          planet.HasChamberOfCommerce && { tag: 'CoC', label: 'Chamber of Commerce' },
+          planet.HasAdministrationCenter && { tag: 'ADM', label: 'Administration Center' },
+        ].filter(Boolean)
+
         return (
           <div key={planet.PlanetNaturalId} style={{
             marginBottom: '16px',
@@ -46,14 +64,15 @@ function Sidebar({ system, planets, onClose }) {
               <span style={{ color: '#888', fontWeight: 'normal', marginLeft: '8px' }}>{planet.PlanetNaturalId}</span>
             </div>
 
-            <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px' }}>
-              {[
-                planet.HasLocalMarket && 'LM',
-                planet.HasWarehouse && 'WH',
-                planet.HasShipyard && 'SY',
-                planet.HasChamberOfCommerce && 'CoC',
-                planet.HasAdministrationCenter && 'ADM'
-              ].filter(Boolean).join(' · ') || 'No facilities'}
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {facilities.length > 0
+                ? facilities.map(({ tag, label }, i) => (
+                    <span key={tag}>
+                      <Tag tag={tag} label={label} />
+                      {i < facilities.length - 1 && <span style={{ marginLeft: '6px' }}>·</span>}
+                    </span>
+                  ))
+                : 'No facilities'}
             </div>
 
             {cogcTypes.length > 0 && (

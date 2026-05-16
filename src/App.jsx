@@ -48,7 +48,9 @@ function App() {
     <>
       <MapView
         systems={systems}
+        planets={planets}
         onSystemClick={setSelectedSystem}
+        onBackgroundClick={() => setSelectedSystem(null)}
         showLines={showLines}
         showSectors={showSectors}
         showSystemNames={showSystemNames}
