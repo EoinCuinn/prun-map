@@ -8,8 +8,11 @@ function App() {
   const [planets, setPlanets] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedSystem, setSelectedSystem] = useState(null)
+  const [highlightedSystem, setHighlightedSystem] = useState(null)
+  const [hoveredSystem, setHoveredSystem] = useState(null)
   const [showLines, setShowLines] = useState(true)
   const [showSectors, setShowSectors] = useState(true)
+  const [showSystemNames, setShowSystemNames] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -28,6 +31,19 @@ function App() {
     </div>
   )
 
+  const btnStyle = (active) => ({
+    background: active ? '#1e3a5f' : '#0f1117',
+    color: active ? '#4f8ef7' : '#3a4a5f',
+    border: `1px solid ${active ? '#4f8ef7' : '#1e3a5f'}`,
+    borderRadius: '4px',
+    padding: '6px 12px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    letterSpacing: '0.05em',
+    transition: 'all 0.15s ease',
+    fontFamily: 'monospace',
+  })
+
   return (
     <>
       <MapView
@@ -35,11 +51,22 @@ function App() {
         onSystemClick={setSelectedSystem}
         showLines={showLines}
         showSectors={showSectors}
+        showSystemNames={showSystemNames}
+        highlightedSystem={highlightedSystem}
+        hoveredSystem={hoveredSystem}
       />
-      <SearchBar systems={systems} planets={planets} onSelectSystem={setSelectedSystem} />
+      <SearchBar
+        systems={systems}
+        planets={planets}
+        onSelectSystem={(system) => {
+          setSelectedSystem(system)
+          setHighlightedSystem(system)
+          setHoveredSystem(null)
+        }}
+        onHoverSystem={setHoveredSystem}
+      />
       <Sidebar system={selectedSystem} planets={planets} onClose={() => setSelectedSystem(null)} />
 
-      {/* Toggle buttons */}
       <div style={{
         position: 'fixed',
         bottom: '20px',
@@ -47,39 +74,15 @@ function App() {
         display: 'flex',
         gap: '8px',
         zIndex: 100,
-        fontFamily: 'monospace',
       }}>
-        <button
-          onClick={() => setShowSectors(v => !v)}
-          style={{
-            background: showSectors ? '#1e3a5f' : '#0f1117',
-            color: showSectors ? '#4f8ef7' : '#3a4a5f',
-            border: `1px solid ${showSectors ? '#4f8ef7' : '#1e3a5f'}`,
-            borderRadius: '4px',
-            padding: '6px 12px',
-            fontSize: '12px',
-            cursor: 'pointer',
-            letterSpacing: '0.05em',
-            transition: 'all 0.15s ease',
-          }}
-        >
+        <button onClick={() => setShowSectors(v => !v)} style={btnStyle(showSectors)}>
           ⬡ SECTORS
         </button>
-        <button
-          onClick={() => setShowLines(v => !v)}
-          style={{
-            background: showLines ? '#1e3a5f' : '#0f1117',
-            color: showLines ? '#4f8ef7' : '#3a4a5f',
-            border: `1px solid ${showLines ? '#4f8ef7' : '#1e3a5f'}`,
-            borderRadius: '4px',
-            padding: '6px 12px',
-            fontSize: '12px',
-            cursor: 'pointer',
-            letterSpacing: '0.05em',
-            transition: 'all 0.15s ease',
-          }}
-        >
+        <button onClick={() => setShowLines(v => !v)} style={btnStyle(showLines)}>
           ╌ LINES
+        </button>
+        <button onClick={() => setShowSystemNames(v => !v)} style={btnStyle(showSystemNames)}>
+          ✦ NAMES
         </button>
       </div>
     </>
