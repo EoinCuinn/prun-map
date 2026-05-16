@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import MapView from './MapView'
 import Sidebar from './Sidebar'
 import SearchBar from './SearchBar'
+import FilterPanel from './FilterPanel'
 
 function App() {
   const [systems, setSystems] = useState([])
@@ -13,6 +14,7 @@ function App() {
   const [showLines, setShowLines] = useState(true)
   const [showSectors, setShowSectors] = useState(true)
   const [showSystemNames, setShowSystemNames] = useState(false)
+  const [activeCogc, setActiveCogc] = useState([])
 
   useEffect(() => {
     Promise.all([
@@ -24,6 +26,20 @@ function App() {
       setLoading(false)
     })
   }, [])
+
+  // Compute the set of SystemIds that match active filters
+  const filteredSystemIds = useMemo(() => {
+    if (activeCogc.length === 0) return null // null = no filter active
+    const matched = new Set()
+    planets.forEach(p => {
+      if (!p.SystemId || !p.COGCPrograms) return
+      const types = p.COGCPrograms.map(c => c.ProgramType).filter(Boolean)
+      if (activeCogc.some(f => types.includes(f))) {
+        matched.add(p.SystemId)
+      }
+    })
+    return matched
+  }, [activeCogc, planets])
 
   if (loading) return (
     <div style={{ background: '#0f1117', color: '#4f8ef7', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontSize: '24px' }}>
@@ -50,12 +66,13 @@ function App() {
         systems={systems}
         planets={planets}
         onSystemClick={setSelectedSystem}
-        onBackgroundClick={() => setSelectedSystem(null)}
+        onBackgroundClick={() => { setSelectedSystem(null); setHighlightedSystem(null) }}
         showLines={showLines}
         showSectors={showSectors}
         showSystemNames={showSystemNames}
         highlightedSystem={highlightedSystem}
         hoveredSystem={hoveredSystem}
+        filteredSystemIds={filteredSystemIds}
       />
       <SearchBar
         systems={systems}
@@ -66,6 +83,10 @@ function App() {
           setHoveredSystem(null)
         }}
         onHoverSystem={setHoveredSystem}
+      />
+      <FilterPanel
+        activeCogc={activeCogc}
+        onCogcChange={setActiveCogc}
       />
       <Sidebar system={selectedSystem} planets={planets} onClose={() => setSelectedSystem(null)} />
 

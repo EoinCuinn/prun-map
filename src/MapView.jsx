@@ -61,7 +61,7 @@ function hexPath(cx, cy, r) {
   return `M${pts.map(p => p.join(',')).join('L')}Z`
 }
 
-function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines, showSectors, showSystemNames, highlightedSystem, hoveredSystem }) {
+function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines, showSectors, showSystemNames, highlightedSystem, hoveredSystem, filteredSystemIds }) {
   const svgRef = useRef(null)
   const sectorsGroupRef = useRef(null)
   const linesGroupRef = useRef(null)
@@ -74,6 +74,7 @@ function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines
   const defaultTransformRef = useRef(null)
   const preClickTransformRef = useRef(null)
   const showSystemNamesRef = useRef(showSystemNames)
+  const filteredSystemIdsRef = useRef(filteredSystemIds)
 
   // Keep ref in sync with prop so deselect can read current value
   useEffect(() => {
@@ -324,8 +325,8 @@ function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines
       .attr('cx', d => systemScreenPos(d)[0])
       .attr('cy', d => systemScreenPos(d)[1])
       .attr('r', 1)
-      .attr('fill', '#4f8ef7')
-      .attr('opacity', 0.8)
+      .attr('fill', d => filteredSystemIds && !filteredSystemIds.has(d.SystemId) ? '#4f8ef7' : '#4f8ef7')
+      .attr('opacity', d => filteredSystemIds ? (filteredSystemIds.has(d.SystemId) ? 1.0 : 0.15) : 0.8)
       .on('mouseover', (event, d) => {
         const sysPlanets = planetsBySystem[d.SystemId] || []
         const headerHtml = `
@@ -377,6 +378,29 @@ function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
       .on('click', (event, d) => { event.stopPropagation(); onSystemClick(d) })
+
+    // ── Filter match rings ──────────────────────────────────────────
+    const filterRingsGroup = g.append('g').attr('class', 'filter-rings-layer')
+
+    const drawFilterRings = (ids) => {
+      filterRingsGroup.selectAll('*').remove()
+      if (!ids) return
+      systems.forEach(s => {
+        if (!ids.has(s.SystemId)) return
+        const [fx, fy] = systemScreenPos(s)
+        filterRingsGroup.append('circle')
+          .attr('cx', fx).attr('cy', fy)
+          .attr('r', 4)
+          .attr('fill', 'none')
+          .attr('stroke', '#f7e14f')
+          .attr('stroke-width', 1)
+          .attr('opacity', 0.9)
+          .attr('pointer-events', 'none')
+      })
+    }
+
+    drawFilterRings(filteredSystemIds)
+    filteredSystemIdsRef.current = { ids: filteredSystemIds, draw: drawFilterRings }
 
     // ── System name labels ───────────────────────────────────────────
     const systemNamesGroup = g.append('g')
@@ -475,6 +499,18 @@ function MapView({ systems, planets, onSystemClick, onBackgroundClick, showLines
       systemNamesGroupRef.current.style('display', showSystemNames ? null : 'none')
     }
   }, [showSystemNames])
+
+  useEffect(() => {
+    if (!gRef.current) return
+    // Update dot opacity
+    gRef.current.selectAll('circle.system')
+      .attr('opacity', d => filteredSystemIds ? (filteredSystemIds.has(d.SystemId) ? 1.0 : 0.15) : 0.8)
+    // Redraw filter rings
+    if (filteredSystemIdsRef.current && filteredSystemIdsRef.current.draw) {
+      filteredSystemIdsRef.current.draw(filteredSystemIds)
+      filteredSystemIdsRef.current.ids = filteredSystemIds
+    }
+  }, [filteredSystemIds])
 
   // ── Hover preview effect ─────────────────────────────────────────
   useEffect(() => {
